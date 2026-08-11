@@ -8,7 +8,6 @@
 // class AIService {
 //
 //
-//
 //   static const String prompt = '''
 //   You are a piping engineering expert. Extract ALL data from this isometric drawing.
 //   Return ONLY valid JSON (no markdown formatting):
@@ -196,212 +195,106 @@
 //   }
 // }
 
-
-
-
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 import 'package:http/http.dart' as http;
-import 'package:pdfx/pdfx.dart';
 import '../models/bom_item.dart';
 import '../models/spool.dart';
+import '../widgets/extraction_result.dart';
 
 class AIService {
+  static const String backendUrl = 'http://10.0.2.2:3000/api/drawing/process-drawing';
 
-
-
-  static const String prompt = '''
-  You are a piping engineering expert. Extract ALL data from this isometric drawing.
-  Return ONLY valid JSON (no markdown formatting, no conversational text):
-  {
-    "drawing_no": "",
-    "line_no": "",
-    "revision": "Rev 0",
-    "weld_type": "BUTT+FILLET",
-    "bom": [
-      {
-        "id": "1",
-        "nd": "100 NB",
-        "qty": "5.2",
-        "uom": "MTR",
-        "description": "PIPE A106 GR B",
-        "category": "PIPE"
-      }
-    ],
-    "spools": [
-      {
-        "spool_mark": "SP-01",
-        "nos_off": "1",
-        "material": "CS",
-        "remark": ""
-      }
-    ]
-  }
-  ''';
-
-  static Future<Map<String, dynamic>> processFileWithLogs({
+  static Future<ExtractionResult> processFileWithLogs({
     required Uint8List fileBytes,
     required bool isPdf,
+    required String authToken,
     required Function(String log, {bool isError, bool isSuccess}) onLog,
   }) async {
-    if (apiKey.isEmpty || apiKey == 'YOUR_NEW_GEMINI_API_KEY_HERE') {
-      onLog('❌ Error: Gemini API Key missing in ai_service.dart!', isError: true);
-      print('❌ Error: Gemini API Key missing in ai_service.dart!');
-      throw Exception('Gemini API Key missing');
+    onLog('🚀 STEP 1: Preparing payload & converting file bytes...');
+
+    try {
+      final String base64File = base64Encode(fileBytes);
+
+      onLog('🤖 STEP 2: Connecting to   Server...');
+
+      final response = await http.post(
+        Uri.parse(backendUrl),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $authToken',
+        },
+        body: json.encode({
+          'fileBytesBase64': base64File,
+          'isPdf': isPdf,
+        }),
+      ).timeout(
+        const Duration(minutes: 5),
+        onTimeout: () {
+          throw TimeoutException('Request timed out after 5 minute. Server slow or weak connection.');
+        },
+      );
+
+      return _handleHttpResponse(response, onLog);
+    } on SocketException catch (e) {
+      final errorMsg = '❌ Network Error: Could not connect to Backend ($backendUrl). Ensure server is running. Details: $e';
+      onLog(errorMsg, isError: true);
+      throw Exception(errorMsg);
+    } on TimeoutException catch (e) {
+      final errorMsg = '⏱️ Connection Timeout: ${e.message}';
+      onLog(errorMsg, isError: true);
+      throw Exception(errorMsg);
+    } catch (e) {
+      final errorMsg = '❌ Unexpected Exception: $e';
+      onLog(errorMsg, isError: true);
+      rethrow;
     }
+  }
 
-    List<String> imageBase64List = [];
+  static ExtractionResult _handleHttpResponse(
+      http.Response response,
+      Function(String log, {bool isError, bool isSuccess}) onLog,
+      ) {
+    onLog('📡 Server Response Status: ${response.statusCode}');
 
+    switch (response.statusCode) {
+      case 200:
+        final Map<String, dynamic> responseData = json.decode(response.body);
 
-    if (isPdf) {
-      onLog('📄 STEP 1: PDF Document load ho raha hai...');
-      print('📄 STEP 1: PDF Document load ho raha hai...');
-      try {
-        final doc = await PdfDocument.openData(fileBytes);
-        onLog('ℹ️ Total Pages found in PDF: ${doc.pagesCount}');
-        print('ℹ️ Total Pages found in PDF: ${doc.pagesCount}');
+        final List<BomItem> bom = (responseData['bom'] as List? ?? [])
+            .map((e) => BomItem.fromJson(e))
+            .toList();
 
-        for (int i = 1; i <= doc.pagesCount; i++) {
-          onLog('🔄 Rendering PDF Page $i/${doc.pagesCount}...');
-          print('🔄 Rendering PDF Page $i/${doc.pagesCount}...');
-          final page = await doc.getPage(i);
+        final List<Spool> spools = (responseData['spools'] as List? ?? [])
+            .map((e) => Spool.fromJson(e))
+            .toList();
 
+        onLog('🎉 SUCCESS: Extracted ${bom.length} BOM Items & ${spools.length} Spools!', isSuccess: true);
+        return ExtractionResult(bomItems: bom, spools: spools);
 
-          final pageImage = await page.render(
-            width: page.width * 1.2,
-            height: page.height * 1.2,
-            format: PdfPageImageFormat.jpeg,
-          );
+      case 401:
+        const msg = '❌ 401 Unauthorized: Session expired or invalid token. Please log in again.';
+        onLog(msg, isError: true);
+        throw Exception(msg);
 
-          if (pageImage != null && pageImage.bytes.isNotEmpty) {
-            imageBase64List.add(base64Encode(pageImage.bytes));
-            onLog('✓ Page $i/${doc.pagesCount} Rendered Successfully');
-            print('✓ Page $i/${doc.pagesCount} Rendered Successfully');
-          }
-          await page.close();
-        }
-        await doc.close();
-      } catch (e) {
-        onLog('❌ PDF Render Failed: $e', isError: true);
-        print('❌ PDF Render Failed: $e');
-        throw Exception('PDF Render Error: $e');
-      }
-    } else {
-      onLog('🖼 STEP 1: Image File Detected');
-      print('🖼 STEP 1: Image File Detected');
-      imageBase64List.add(base64Encode(fileBytes));
+      case 429:
+        const msg = '⚠️ 429 Too Many Requests: Rate limit reached. Please wait a moment and try again.';
+        onLog(msg, isError: true);
+        throw Exception(msg);
+
+      case 500:
+      case 502:
+      case 503:
+        final msg = '💥 Server Error (${response.statusCode}): ${response.body}';
+        onLog(msg, isError: true);
+        throw Exception(msg);
+
+      default:
+        final msg = '❌ Failed with Status ${response.statusCode}: ${response.body}';
+        onLog(msg, isError: true);
+        throw Exception(msg);
     }
-
-    List<BomItem> totalBom = [];
-    List<Spool> totalSpools = [];
-
-
-    for (int index = 0; index < imageBase64List.length; index++) {
-      final base64Image = imageBase64List[index];
-
-      if (index > 0) {
-        onLog('⏳ Delay 3s before Page ${index + 1}...');
-        print('⏳ Delay 3s before Page ${index + 1}...');
-        await Future.delayed(const Duration(seconds: 3));
-      }
-
-      onLog('🤖 STEP 2: Processing Page ${index + 1}/${imageBase64List.length} with Gemini 3.6 Flash...');
-      print('🤖 STEP 2: Processing Page ${index + 1}/${imageBase64List.length} with Gemini 3.6 Flash...');
-
-      bool pageSuccess = false;
-      int retries = 0;
-      const int maxRetries = 3;
-
-      while (!pageSuccess && retries < maxRetries) {
-        try {
-          final response = await http.post(
-            Uri.parse(
-                'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent'
-            ),
-            headers: {
-              'Content-Type': 'application/json',
-              'x-goog-api-key': apiKey,
-            },
-            body: json.encode({
-              'contents': [
-                {
-                  'parts': [
-                    {'text': prompt},
-                    {
-                      'inline_data': {
-                        'mime_type': isPdf ? 'image/jpeg' : 'image/png',
-                        'data': base64Image,
-                      }
-                    }
-                  ]
-                }
-              ]
-            }),
-          ).timeout(const Duration(seconds: 90));
-
-          onLog('📡 Response Status Code: ${response.statusCode}');
-          print('📡 Response Status Code: ${response.statusCode}');
-
-          if (response.statusCode == 200) {
-            final body = json.decode(response.body);
-            final String rawText = body['candidates'][0]['content']['parts'][0]['text'];
-
-            final RegExp jsonRegex = RegExp(r'\{[\s\S]*\}');
-            final match = jsonRegex.firstMatch(rawText);
-            final cleanJsonText = match != null ? match.group(0)! : rawText;
-
-            final Map<String, dynamic> jsonMap = json.decode(cleanJsonText);
-
-            final String drawingNo = jsonMap['drawing_no']?.toString() ?? '';
-            final String lineNo = jsonMap['line_no']?.toString() ?? '';
-
-            if (jsonMap['bom'] != null) {
-              final pageBom = (jsonMap['bom'] as List).map((e) {
-                e['drawing_no'] = drawingNo;
-                e['line_no'] = lineNo;
-                return BomItem.fromJson(e);
-              }).toList();
-              totalBom.addAll(pageBom);
-              onLog('✓ Extracted ${pageBom.length} BOM Items from Page ${index + 1}', isSuccess: true);
-              print('✓ Extracted ${pageBom.length} BOM Items from Page ${index + 1}');
-            }
-
-            if (jsonMap['spools'] != null) {
-              final pageSpools = (jsonMap['spools'] as List).map((e) {
-                e['drawing_no'] = drawingNo;
-                e['line_no'] = lineNo;
-                return Spool.fromJson(e);
-              }).toList();
-              totalSpools.addAll(pageSpools);
-              onLog('✓ Extracted ${pageSpools.length} Spools from Page ${index + 1}', isSuccess: true);
-              print('✓ Extracted ${pageSpools.length} Spools from Page ${index + 1}');
-            }
-
-            pageSuccess = true;
-          } else if (response.statusCode == 429) {
-            print("429 body :${response.body}");
-            retries++;
-            int waitTime = 20 * retries; // 20s, 40s wait
-            onLog('⏳ Rate Limit (429) hit. Waiting $waitTime seconds before Retry $retries/$maxRetries...', isError: true);
-            print('⏳ Rate Limit (429) hit. Waiting $waitTime seconds before Retry $retries/$maxRetries...');
-
-            await Future.delayed(Duration(seconds: waitTime));
-          } else {
-            onLog('❌ Gemini API Error (${response.statusCode}): ${response.body}', isError: true);
-            print('❌ Gemini API Error (${response.statusCode}): ${response.body}');
-            break;
-          }
-        } catch (e) {
-          retries++;
-          onLog('❌ Exception on Page ${index + 1}: $e. Retrying in 10s...', isError: true);
-          print('❌ Exception on Page ${index + 1}: $e. Retrying in 10s...');
-          await Future.delayed(const Duration(seconds: 10));
-        }
-      }
-    }
-
-    onLog('🎉 SUCCESS: Total ${totalBom.length} Items & ${totalSpools.length} Spools Extracted!', isSuccess: true);
-    print('🎉 SUCCESS: Total ${totalBom.length} Items & ${totalSpools.length} Spools Extracted!');
-    return {'bom': totalBom, 'spools': totalSpools};
   }
 }

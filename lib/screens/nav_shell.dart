@@ -1,4 +1,4 @@
-import 'package:bmapp/screens/upload_sxtract_screen.dart';
+import 'package:bmapp/upload_pdf/upload_extract_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/bom_provider.dart';
