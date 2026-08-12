@@ -65,7 +65,7 @@ class UploadExtractNotifier extends StateNotifier<UploadExtractState> {
 
       final bool isPdf = extension == 'pdf';
       // this token is temporary
-      final String activeToken = token ?? 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjZhNzVkNDMzZTljMWFmNTcxYzdiZDA3NyIsImVtYWlsIjoic29udUBlbWFpbC5jb20iLCJpYXQiOjE3ODY0MzY3ODJ9.T4ADJhcQ8u4tLBhcu4e5aXQ9ilDxaxjGqeNZL-txOBY';
+      final String activeToken = token ?? 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjZhNzVkNDMzZTljMWFmNTcxYzdiZDA3NyIsImVtYWlsIjoic29udUBlbWFpbC5jb20iLCJpYXQiOjE3ODY0NTY4ODd9.Sg3X0dMe0iORbDfwA6HUnozUqE3VZFvOCwfW7JF_XNs';
 
       final extractionResult = await AIService.processFileWithLogs(
         fileBytes: fileBytes,

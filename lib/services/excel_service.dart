@@ -168,7 +168,6 @@
 
 // new direct download
 
-
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -202,15 +201,27 @@ class ExcelExportService {
     await Share.shareXFiles([XFile(filePath)], text: 'Exported Excel File');
   }
 
-  // 🟢 3. Pipe BOM Specific Export
+  // 🟢 3. Pipe BOM Specific Export (Fixed Null-Safety)
   static Future<String?> exportPipeBom(List<BomItem> bomItems) async {
-    try{
-      final pipeItems = bomItems.where((e) => e.category.toUpperCase() == 'PIPE').toList();
+    try {
+      // 🟢 Null-safe category check
+      final pipeItems = bomItems.where((e) {
+        final cat = (e.category ?? '').toString().trim().toUpperCase();
+        return cat == 'PIPE';
+      }).toList();
 
       final headers = ['S.NO', 'DRG NO.', 'LINE NO.', 'ND/SIZE', 'QTY', 'UOM', 'DESCRIPTION'];
       final rows = List.generate(pipeItems.length, (i) {
         final item = pipeItems[i];
-        return [i + 1, item.drawingNo, item.lineNo, item.nd, item.qty, item.uom, item.description];
+        return [
+          i + 1,
+          item.drawingNo ?? '',
+          item.lineNo ?? '',
+          item.nd ?? '',
+          item.qty,
+          item.uom ?? '',
+          item.description ?? ''
+        ];
       });
 
       final excel = Excel.createExcel();
@@ -223,45 +234,54 @@ class ExcelExportService {
       }
 
       return await _saveFileToMobileStorage(excel, 'PIPE_BOM_Export.xlsx');
-
-
-    }
-    catch(err){
-      print("error of pipe bom fn $err");
+    } catch (err) {
+      print("❌ Pipe BOM Export Error: $err");
       return null;
-
     }
   }
 
-  // 🟢 4. ISO Wise Grouped Export
+  // 🟢 4. ISO Wise Grouped Export (Using _sanitizeSheetName + Duplicate Handling)
   static Future<String?> exportIsoWiseBom(List<BomItem> bomItems) async {
-    try{
+    try {
       final excel = Excel.createExcel();
 
       final Map<String, List<BomItem>> groupedByIso = {};
       for (var item in bomItems) {
-        final key = item.drawingNo.isEmpty ? 'UNKNOWN_ISO' : item.drawingNo;
+        final key = (item.drawingNo ?? '').trim().isEmpty ? 'UNKNOWN_ISO' : item.drawingNo!;
         groupedByIso.putIfAbsent(key, () => []).add(item);
       }
 
       final headers = ['S.NO', 'LINE NO.', 'ND/SIZE', 'QTY', 'UOM', 'DESCRIPTION', 'CATEGORY'];
 
-      groupedByIso.forEach((isoName, items) {
-        final cleanSheetName = isoName.length > 30 ? isoName.substring(0, 30) : isoName;
-        final sheet = excel[cleanSheetName];
+      // Set to track used sheet names to avoid crashes on duplicate names
+      final Set<String> usedSheetNames = {};
 
+      groupedByIso.forEach((isoName, items) {
+        // 🟢 Sanitization Function Call
+        String baseSheetName = _sanitizeSheetName(isoName);
+        String finalSheetName = baseSheetName;
+        int counter = 1;
+
+        // Duplicate Sheet Name Check
+        while (usedSheetNames.contains(finalSheetName.toUpperCase())) {
+          finalSheetName = '${baseSheetName}_$counter';
+          counter++;
+        }
+        usedSheetNames.add(finalSheetName.toUpperCase());
+
+        final sheet = excel[finalSheetName];
         sheet.appendRow(headers.map((e) => TextCellValue(e)).toList());
 
         for (int i = 0; i < items.length; i++) {
           final item = items[i];
           sheet.appendRow([
             TextCellValue((i + 1).toString()),
-            TextCellValue(item.lineNo),
-            TextCellValue(item.nd),
+            TextCellValue(item.lineNo ?? ''),
+            TextCellValue(item.nd ?? ''),
             TextCellValue(item.qty.toString()),
-            TextCellValue(item.uom),
-            TextCellValue(item.description),
-            TextCellValue(item.category),
+            TextCellValue(item.uom ?? ''),
+            TextCellValue(item.description ?? ''),
+            TextCellValue(item.category ?? ''),
           ]);
         }
       });
@@ -271,21 +291,23 @@ class ExcelExportService {
       }
 
       return await _saveFileToMobileStorage(excel, 'ISO_Wise_BOM_Export.xlsx');
-
-
-
-    }
-    catch(err){
+    } catch (err) {
       print('❌ ISO Wise BOM Export Error: $err');
       return null;
     }
   }
 
-  // Helper: Generates Excel Workbook with DUMP BOM and SPOOL TRACKER
+  // 🟢 5. Helper Function: Excel Sheet Name Sanitizer
+  static String _sanitizeSheetName(String name) {
+    var clean = name.replaceAll(RegExp(r'[\\/?*\[\]:]'), '_');
+    if (clean.length > 28) clean = clean.substring(0, 28); // room for duplicate suffix
+    return clean.trim().isEmpty ? 'SHEET' : clean;
+  }
+
+  // Helper: Generates Excel Workbook for Dump BOM
   static Excel _generateExcelWorkbook(List<BomItem> bomItems, List<Spool> spools) {
     final excel = Excel.createExcel();
 
-    // Sheet 1: DUMP BOM
     final Sheet bomSheet = excel['DUMP BOM'];
     bomSheet.appendRow([
       TextCellValue('S.NO'),
@@ -302,17 +324,16 @@ class ExcelExportService {
       final item = bomItems[i];
       bomSheet.appendRow([
         TextCellValue((i + 1).toString()),
-        TextCellValue(item.drawingNo),
-        TextCellValue(item.lineNo),
-        TextCellValue(item.nd),
+        TextCellValue(item.drawingNo ?? ''),
+        TextCellValue(item.lineNo ?? ''),
+        TextCellValue(item.nd ?? ''),
         TextCellValue(item.qty.toString()),
-        TextCellValue(item.uom),
-        TextCellValue(item.description),
-        TextCellValue(item.category),
+        TextCellValue(item.uom ?? ''),
+        TextCellValue(item.description ?? ''),
+        TextCellValue(item.category ?? ''),
       ]);
     }
 
-    // Sheet 2: SPOOL TRACKER
     final Sheet spoolSheet = excel['SPOOL TRACKER'];
     spoolSheet.appendRow([
       TextCellValue('S.NO'),
@@ -331,15 +352,15 @@ class ExcelExportService {
       final item = spools[i];
       spoolSheet.appendRow([
         TextCellValue((i + 1).toString()),
-        TextCellValue(item.drawingNo),
-        TextCellValue(item.spoolMarkNo),
-        TextCellValue(item.lineNo),
-        TextCellValue(item.size),
-        TextCellValue(item.material),
-        TextCellValue(item.nosOff),
-        TextCellValue(item.weldType),
-        TextCellValue(item.dispatchStatus),
-        TextCellValue(item.remarks),
+        TextCellValue(item.drawingNo ?? ''),
+        TextCellValue(item.spoolMarkNo ?? ''),
+        TextCellValue(item.lineNo ?? ''),
+        TextCellValue(item.size ?? ''),
+        TextCellValue(item.material ?? ''),
+        TextCellValue(item.nosOff ?? ''),
+        TextCellValue(item.weldType ?? ''),
+        TextCellValue(item.dispatchStatus ?? ''),
+        TextCellValue(item.remarks ?? ''),
       ]);
     }
 
@@ -350,42 +371,41 @@ class ExcelExportService {
     return excel;
   }
 
-  // Helper: Saves file to mobile storage
-
-
+  // 🟢 Helper: Direct File Storage Saver (Scoped Storage Compatible)
   static Future<String?> _saveFileToMobileStorage(
       Excel excel,
       String fileName,
       ) async {
-    final fileBytes = excel.save();
-    if (fileBytes == null) return null;
-
-    final cleanName = fileName.toLowerCase().endsWith('.xlsx')
-        ? fileName.substring(0, fileName.length - 5)
-        : fileName;
-
-    final Uint8List bytesList = Uint8List.fromList(fileBytes);
-
     try {
+      final fileBytes = excel.save();
+      if (fileBytes == null) return null;
+
+      final cleanName = fileName.toLowerCase().endsWith('.xlsx')
+          ? fileName.substring(0, fileName.length - 5)
+          : fileName;
+
+      final Uint8List bytesList = Uint8List.fromList(fileBytes);
+
+      // 🟢 Android Native Direct Download Write Attempt
       if (Platform.isAndroid) {
-        // 🟢 1. Storage Permissions Request
-        await Permission.storage.request();
-        await Permission.manageExternalStorage.request();
+        try {
+          await Permission.storage.request();
+          final publicDownloadDir = Directory('/storage/emulated/0/Download');
 
-        // 🟢 2. Direct Public Download Directory Path
-        final publicDownloadDir = Directory('/storage/emulated/0/Download');
-
-        if (await publicDownloadDir.exists()) {
-          final filePath = '${publicDownloadDir.path}/$cleanName.xlsx';
-          final file = File(filePath);
-          await file.writeAsBytes(bytesList);
-          return filePath;
+          if (await publicDownloadDir.exists()) {
+            final filePath = '${publicDownloadDir.path}/$cleanName.xlsx';
+            final file = File(filePath);
+            await file.writeAsBytes(bytesList, flush: true);
+            return filePath;
+          }
+        } catch (e) {
+          print('Direct write failed, falling back to FileSaver: $e');
         }
       }
 
-      // 🟢 3. Fallback using FileSaver (ext parameter removed)
+      // Fallback via FileSaver
       final savedPath = await FileSaver.instance.saveFile(
-        name: '$cleanName.xlsx',
+        name: '$cleanName.xlsx', // 🟢 Extension ko direct file name ke saath add kar dein
         bytes: bytesList,
         mimeType: MimeType.microsoftExcel,
       );
