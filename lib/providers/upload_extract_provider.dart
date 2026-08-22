@@ -1,24 +1,24 @@
 import 'dart:convert';
 import 'dart:io' show File;
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter_riverpod/legacy.dart';
+import '../models/bom_item.dart';
+import '../models/drawing_revision_model.dart';
 import '../services/ai_service.dart';
 import '../services/token_service.dart';
-import '../models/bom_item.dart';
-
 import '../upload_pdf/log_model/logitem_model.dart';
 import '../widgets/extraction_result.dart';
 import 'bom_provider.dart';
+import 'revision_provider.dart';
 import 'spool_provider.dart';
 
-// 🟢 Log Item Model
-
-
-
 class UploadExtractNotifier extends StateNotifier<UploadExtractState> {
-  UploadExtractNotifier() : super(UploadExtractState());
+  // 🟢 1. Riverpod Ref inject kiya (WidgetRef ki zaroorat nahi padegi)
+  final Ref _ref;
+
+  UploadExtractNotifier(this._ref) : super(UploadExtractState());
 
   void addLog(String msg, {bool isError = false, bool isSuccess = false}) {
     state = state.copyWith(
@@ -30,7 +30,8 @@ class UploadExtractNotifier extends StateNotifier<UploadExtractState> {
     state = state.copyWith(logs: []);
   }
 
-  Future<ExtractionResult?> pickAndProcessFile(WidgetRef ref) async {
+  // 🟢 2. 'WidgetRef ref' parameter hata diya
+  Future<ExtractionResult?> pickAndProcessFile() async {
     clearLogs();
     state = state.copyWith(isLoading: true);
     addLog('🚀 Opening file picker...');
@@ -64,23 +65,41 @@ class UploadExtractNotifier extends StateNotifier<UploadExtractState> {
       }
 
       final bool isPdf = extension == 'pdf';
-      // this token is temporary
-      final String activeToken = token ?? 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjZhNzVkNDMzZTljMWFmNTcxYzdiZDA3NyIsImVtYWlsIjoic29udUBlbWFpbC5jb20iLCJpYXQiOjE3ODY0NTY4ODd9.Sg3X0dMe0iORbDfwA6HUnozUqE3VZFvOCwfW7JF_XNs';
+      final String activeToken = token ??
+          'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjZhNzVkNDMzZTljMWFmNTcxYzdiZDA3NyIsImVtYWlsIjoic29udUBlbWFpbC5jb20iLCJpYXQiOjE3ODY0NTY4ODd9.Sg3X0dMe0iORbDfwA6HUnozUqE3VZFvOCwfW7JF_XNs';
 
       final extractionResult = await AIService.processFileWithLogs(
         fileBytes: fileBytes,
         isPdf: isPdf,
-         authToken:  activeToken,
-       // authToken: token!,
+        authToken: activeToken,
         onLog: (msg, {isError = false, isSuccess = false}) {
           addLog(msg, isError: isError, isSuccess: isSuccess);
         },
       );
 
+      // 🟢 3. _ref use karke providers update karein
+      _ref.read(bomProvider.notifier).setAll(extractionResult.bomItems);
+      _ref.read(spoolProvider.notifier).setAll(extractionResult.spools);
 
-      ref.read(bomProvider.notifier).addItems(extractionResult.bomItems);
-      ref.read(spoolProvider.notifier).addSpools(extractionResult.spools);
+      // 🟢 4. Auto save revision entry
+      final firstBom = extractionResult.bomItems.isNotEmpty ? extractionResult.bomItems.first : null;
+      final String drgName = (firstBom?.drawingNo.isNotEmpty == true)
+          ? firstBom!.drawingNo
+          : file.name.replaceAll('.pdf', '').replaceAll('.png', '');
+      final String lineName = (firstBom?.lineNo.isNotEmpty == true) ? firstBom!.lineNo : 'N/A';
 
+      _ref.read(revisionProvider.notifier).addRevision(
+        DrawingRevision(
+          id: extractionResult.id,
+          drawingNo: drgName,
+          lineNo: lineName,
+          timestamp: DateTime.now(),
+          bomItems: extractionResult.bomItems,
+          spools: extractionResult.spools,
+        ),
+      );
+
+      addLog('🎉 Data applied to UI and saved to Revisions!', isSuccess: true);
       return extractionResult;
     } catch (e) {
       addLog('❌ Operation Stopped: $e', isError: true);
@@ -90,7 +109,8 @@ class UploadExtractNotifier extends StateNotifier<UploadExtractState> {
     }
   }
 
-  bool parseManualJson(String rawJson, WidgetRef ref) {
+  // 🟢 5. 'WidgetRef ref' parameter yahan se bhi hata diya
+  bool parseManualJson(String rawJson) {
     try {
       if (rawJson.trim().isEmpty) return false;
 
@@ -98,7 +118,7 @@ class UploadExtractNotifier extends StateNotifier<UploadExtractState> {
       final List list = decoded is List ? decoded : (decoded['bom'] ?? []);
 
       final items = list.map((e) => BomItem.fromJson(e)).toList();
-      ref.read(bomProvider.notifier).addItems(items);
+      _ref.read(bomProvider.notifier).setAll(items);
 
       return true;
     } catch (e) {
@@ -108,8 +128,8 @@ class UploadExtractNotifier extends StateNotifier<UploadExtractState> {
   }
 }
 
-//provider
+// 🟢 Provider initialization
 final uploadExtractProvider =
 StateNotifierProvider<UploadExtractNotifier, UploadExtractState>((ref) {
-  return UploadExtractNotifier();
+  return UploadExtractNotifier(ref);
 });

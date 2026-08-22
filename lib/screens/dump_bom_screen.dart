@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/bom_provider.dart';
+import '../providers/revision_provider.dart';
 import '../providers/spool_provider.dart';
 import '../models/bom_item.dart';
 import '../services/excel_service.dart';
@@ -84,15 +85,21 @@ class _DumpBomScreenState extends ConsumerState<DumpBomScreen> {
                       OutlinedButton.icon(
                         onPressed: () {
                           final initialCount = ref.read(bomProvider).length;
+
+                          // 1. BOM Provider me duplicates merge karein
                           ref.read(bomProvider.notifier).mergeDuplicates();
 
-                          final finalCount = ref.read(bomProvider).length;
+                          final mergedBom = ref.read(bomProvider);
+                          final finalCount = mergedBom.length;
                           final mergedDiff = initialCount - finalCount;
 
+                          // 🟢 2. Revision screen ke snapshot me merged data update karein
                           if (mergedDiff > 0) {
+                            ref.read(revisionProvider.notifier).updateDrawingBom(mergedBom);
+
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
-                                content: Text('✅ Successfully merged $mergedDiff duplicate row(s)!'),
+                                content: Text('✅ Successfully merged $mergedDiff duplicate row(s) & updated revision!'),
                                 backgroundColor: Colors.green,
                                 duration: const Duration(seconds: 3),
                               ),

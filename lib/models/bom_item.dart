@@ -26,11 +26,12 @@ class BomItem {
   factory BomItem.fromJson(Map<String, dynamic> json) {
     String desc = json['description']?.toString() ?? '';
     String rawUom = (json['uom']?.toString() ?? 'NOS').toUpperCase();
+
     return BomItem(
-      id: json['id']?.toString() ?? '',
-      drawingNo: json['drawing_no']?.toString() ?? '',
-      lineNo: json['line_no']?.toString() ?? '',
-      nd: json['nd']?.toString() ?? '',
+      id: json['id']?.toString() ?? json['_id']?.toString() ?? '',
+      drawingNo: (json['drawing_no'] ?? json['drawingNo'] ?? '').toString(),
+      lineNo: (json['line_no'] ?? json['lineNo'] ?? '').toString(),
+      nd: json['nd']?.toString() ?? '_',
       qty: double.tryParse(json['qty']?.toString() ?? '0') ?? 0.0,
       uom: rawUom == 'M' ? 'MTR' : rawUom,
       description: desc,
@@ -43,7 +44,9 @@ class BomItem {
   Map<String, dynamic> toJson() => {
     'id': id,
     'drawing_no': drawingNo,
+    'drawingNo': drawingNo,
     'line_no': lineNo,
+    'lineNo': lineNo,
     'nd': nd,
     'qty': qty,
     'uom': uom,

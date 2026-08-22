@@ -58,7 +58,6 @@ class _UploadExtractScreenState extends ConsumerState<UploadExtractScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-
           ElevatedButton.icon(
             style: ElevatedButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 16),
@@ -68,7 +67,8 @@ class _UploadExtractScreenState extends ConsumerState<UploadExtractScreen> {
             onPressed: state.isLoading
                 ? null
                 : () async {
-              final res = await notifier.pickAndProcessFile(ref);
+              // 🟢 FIX 1: Removed 'ref' argument
+              final res = await notifier.pickAndProcessFile();
               if (res != null && context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
@@ -146,7 +146,8 @@ class _UploadExtractScreenState extends ConsumerState<UploadExtractScreen> {
             child: ElevatedButton.icon(
               style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white),
               onPressed: () {
-                final success = notifier.parseManualJson(_jsonController.text, ref);
+                // 🟢 FIX 2: Removed 'ref' argument
+                final success = notifier.parseManualJson(_jsonController.text);
                 if (success) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('✅ Added BOM items successfully!'), backgroundColor: Colors.green),

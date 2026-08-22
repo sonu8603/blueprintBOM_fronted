@@ -9,7 +9,7 @@ import 'iso_wise_screen.dart';
 import 'piping_bom_screen.dart';
 import 'spool_tracker_screen.dart';
 import 'weight_calc_screen.dart';
-import 'revision_screen.dart';
+import '../revision_notes/revision_screen.dart';
 
 class MainShell extends ConsumerStatefulWidget {
   const MainShell({super.key});

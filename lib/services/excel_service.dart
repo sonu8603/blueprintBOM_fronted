@@ -1,173 +1,3 @@
-// import 'dart:io';
-// import 'package:excel/excel.dart';
-// import 'package:path_provider/path_provider.dart';
-// import 'package:share_plus/share_plus.dart';
-// import '../models/bom_item.dart';
-// import '../models/spool.dart';
-//
-// class ExcelExportService {
-//   // 🟢 1. Common Single Table Exporter
-//   static Future<void> exportCustomList({
-//     required String fileName,
-//     required String sheetName,
-//     required List<String> headers,
-//     required List<List<dynamic>> rows,
-//   }) async {
-//     final excel = Excel.createExcel();
-//     final Sheet sheet = excel[sheetName];
-//
-//     if (excel.sheets.containsKey('Sheet1') && sheetName != 'Sheet1') {
-//       excel.delete('Sheet1');
-//     }
-//
-//     sheet.appendRow(headers.map((e) => TextCellValue(e)).toList());
-//
-//     for (final row in rows) {
-//       sheet.appendRow(row.map((val) => TextCellValue(val.toString())).toList());
-//     }
-//
-//     await _saveAndShareExcel(excel, fileName);
-//   }
-//
-//   // 🟢 2. DUMP BOM + SPOOL Multi-Sheet Exporter (Matches DumpBomScreen)
-//   static Future<void> exportAndShare(List<BomItem> bomItems, List<Spool> spools) async {
-//     final excel = Excel.createExcel();
-//
-//     // Sheet 1: DUMP BOM
-//     final Sheet bomSheet = excel['DUMP BOM'];
-//     bomSheet.appendRow([
-//       TextCellValue('S.NO'),
-//       TextCellValue('DRG NO.'),
-//       TextCellValue('LINE NO.'),
-//       TextCellValue('ND/SIZE'),
-//       TextCellValue('QTY'),
-//       TextCellValue('UOM'),
-//       TextCellValue('DESCRIPTION'),
-//       TextCellValue('CATEGORY'),
-//     ]);
-//
-//     for (int i = 0; i < bomItems.length; i++) {
-//       final item = bomItems[i];
-//       bomSheet.appendRow([
-//         TextCellValue((i + 1).toString()),
-//         TextCellValue(item.drawingNo),
-//         TextCellValue(item.lineNo),
-//         TextCellValue(item.nd),
-//         TextCellValue(item.qty.toString()),
-//         TextCellValue(item.uom),
-//         TextCellValue(item.description),
-//         TextCellValue(item.category),
-//       ]);
-//     }
-//
-//     // Sheet 2: SPOOL TRACKER
-//     final Sheet spoolSheet = excel['SPOOL TRACKER'];
-//     spoolSheet.appendRow([
-//       TextCellValue('S.NO'),
-//       TextCellValue('DRG NO.'),
-//       TextCellValue('SPOOL MARK'),
-//       TextCellValue('LINE NO.'),
-//       TextCellValue('SIZE'),
-//       TextCellValue('MATERIAL'),
-//       TextCellValue('STATUS'),
-//     ]);
-//
-//     for (int i = 0; i < spools.length; i++) {
-//       final item = spools[i];
-//       spoolSheet.appendRow([
-//         TextCellValue((i + 1).toString()),
-//         TextCellValue(item.drawingNo),
-//         TextCellValue(item.spoolMarkNo),
-//         TextCellValue(item.lineNo),
-//         TextCellValue(item.size),
-//         TextCellValue(item.material),
-//         TextCellValue(item.dispatchStatus),
-//       ]);
-//     }
-//
-//     if (excel.sheets.containsKey('Sheet1')) {
-//       excel.delete('Sheet1');
-//     }
-//
-//     await _saveAndShareExcel(excel, 'ISO_BOM_Export.xlsx');
-//   }
-//
-//   // 🟢 3. Pipe BOM Specific Export
-//   static Future<void> exportPipeBom(List<BomItem> bomItems) async {
-//     final pipeItems = bomItems.where((e) => e.category.toUpperCase() == 'PIPE').toList();
-//
-//     final headers = ['S.NO', 'DRG NO.', 'LINE NO.', 'ND/SIZE', 'QTY', 'UOM', 'DESCRIPTION'];
-//     final rows = List.generate(pipeItems.length, (i) {
-//       final item = pipeItems[i];
-//       return [i + 1, item.drawingNo, item.lineNo, item.nd, item.qty, item.uom, item.description];
-//     });
-//
-//     await exportCustomList(
-//       fileName: 'PIPE_BOM_Export.xlsx',
-//       sheetName: 'PIPE BOM',
-//       headers: headers,
-//       rows: rows,
-//     );
-//   }
-//
-//   // 🟢 4. ISO Wise Grouped Export
-//   static Future<void> exportIsoWiseBom(List<BomItem> bomItems) async {
-//     final excel = Excel.createExcel();
-//
-//     final Map<String, List<BomItem>> groupedByIso = {};
-//     for (var item in bomItems) {
-//       final key = item.drawingNo.isEmpty ? 'UNKNOWN_ISO' : item.drawingNo;
-//       groupedByIso.putIfAbsent(key, () => []).add(item);
-//     }
-//
-//     final headers = ['S.NO', 'LINE NO.', 'ND/SIZE', 'QTY', 'UOM', 'DESCRIPTION', 'CATEGORY'];
-//
-//     groupedByIso.forEach((isoName, items) {
-//       final cleanSheetName = isoName.length > 30 ? isoName.substring(0, 30) : isoName;
-//       final sheet = excel[cleanSheetName];
-//
-//       sheet.appendRow(headers.map((e) => TextCellValue(e)).toList());
-//
-//       for (int i = 0; i < items.length; i++) {
-//         final item = items[i];
-//         sheet.appendRow([
-//           TextCellValue((i + 1).toString()),
-//           TextCellValue(item.lineNo),
-//           TextCellValue(item.nd),
-//           TextCellValue(item.qty.toString()),
-//           TextCellValue(item.uom),
-//           TextCellValue(item.description),
-//           TextCellValue(item.category),
-//         ]);
-//       }
-//     });
-//
-//     if (excel.sheets.containsKey('Sheet1') && groupedByIso.isNotEmpty) {
-//       excel.delete('Sheet1');
-//     }
-//
-//     await _saveAndShareExcel(excel, 'ISO_Wise_BOM_Export.xlsx');
-//   }
-//
-//   // 🟢 Helper Function
-//   static Future<void> _saveAndShareExcel(Excel excel, String fileName) async {
-//     final fileBytes = excel.save();
-//     if (fileBytes == null) return;
-//
-//     final directory = await getTemporaryDirectory();
-//     final filePath = '${directory.path}/$fileName';
-//     final file = File(filePath);
-//
-//     await file.writeAsBytes(fileBytes);
-//     await Share.shareXFiles([XFile(filePath)], text: 'Exported Excel File: $fileName');
-//   }
-// }
-
-
-
-
-// new direct download
-
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -180,13 +10,13 @@ import '../models/bom_item.dart';
 import '../models/spool.dart';
 
 class ExcelExportService {
-  // 🟢 1. DIRECT MOBILE DOWNLOAD (Saves directly to Download folder)
+  // 🟢 1. DIRECT MOBILE DOWNLOAD
   static Future<String?> downloadToPhone(List<BomItem> bomItems, List<Spool> spools) async {
     final excel = _generateExcelWorkbook(bomItems, spools);
     return await _saveFileToMobileStorage(excel, 'ISO_BOM_Export.xlsx');
   }
 
-  // 🟢 2. SHARE VIA APPS (Opens Gmail, WhatsApp, Drive Share Sheet)
+  // 🟢 2. SHARE VIA APPS
   static Future<void> shareExcelFile(List<BomItem> bomItems, List<Spool> spools) async {
     final excel = _generateExcelWorkbook(bomItems, spools);
 
@@ -201,26 +31,22 @@ class ExcelExportService {
     await Share.shareXFiles([XFile(filePath)], text: 'Exported Excel File');
   }
 
-  // 🟢 3. Pipe BOM Specific Export (Fixed Null-Safety)
+  // 🟢 3. Pipe BOM Specific Export
   static Future<String?> exportPipeBom(List<BomItem> bomItems) async {
     try {
-      // 🟢 Null-safe category check
-      final pipeItems = bomItems.where((e) {
-        final cat = (e.category ?? '').toString().trim().toUpperCase();
-        return cat == 'PIPE';
-      }).toList();
+      final pipeItems = bomItems.where((e) => e.category.trim().toUpperCase() == 'PIPE').toList();
 
       final headers = ['S.NO', 'DRG NO.', 'LINE NO.', 'ND/SIZE', 'QTY', 'UOM', 'DESCRIPTION'];
       final rows = List.generate(pipeItems.length, (i) {
         final item = pipeItems[i];
         return [
           i + 1,
-          item.drawingNo ?? '',
-          item.lineNo ?? '',
-          item.nd ?? '',
+          item.drawingNo,
+          item.lineNo,
+          item.nd,
           item.qty,
-          item.uom ?? '',
-          item.description ?? ''
+          item.uom,
+          item.description,
         ];
       });
 
@@ -233,6 +59,8 @@ class ExcelExportService {
         sheet.appendRow(row.map((val) => TextCellValue(val.toString())).toList());
       }
 
+      _autoFitColumnWidths(sheet);
+
       return await _saveFileToMobileStorage(excel, 'PIPE_BOM_Export.xlsx');
     } catch (err) {
       print("❌ Pipe BOM Export Error: $err");
@@ -240,29 +68,25 @@ class ExcelExportService {
     }
   }
 
-  // 🟢 4. ISO Wise Grouped Export (Using _sanitizeSheetName + Duplicate Handling)
+  // 🟢 4. ISO Wise Grouped Export
   static Future<String?> exportIsoWiseBom(List<BomItem> bomItems) async {
     try {
       final excel = Excel.createExcel();
 
       final Map<String, List<BomItem>> groupedByIso = {};
       for (var item in bomItems) {
-        final key = (item.drawingNo ?? '').trim().isEmpty ? 'UNKNOWN_ISO' : item.drawingNo!;
+        final key = item.drawingNo.trim().isEmpty ? 'UNKNOWN_ISO' : item.drawingNo;
         groupedByIso.putIfAbsent(key, () => []).add(item);
       }
 
       final headers = ['S.NO', 'LINE NO.', 'ND/SIZE', 'QTY', 'UOM', 'DESCRIPTION', 'CATEGORY'];
-
-      // Set to track used sheet names to avoid crashes on duplicate names
       final Set<String> usedSheetNames = {};
 
       groupedByIso.forEach((isoName, items) {
-        // 🟢 Sanitization Function Call
         String baseSheetName = _sanitizeSheetName(isoName);
         String finalSheetName = baseSheetName;
         int counter = 1;
 
-        // Duplicate Sheet Name Check
         while (usedSheetNames.contains(finalSheetName.toUpperCase())) {
           finalSheetName = '${baseSheetName}_$counter';
           counter++;
@@ -276,14 +100,16 @@ class ExcelExportService {
           final item = items[i];
           sheet.appendRow([
             TextCellValue((i + 1).toString()),
-            TextCellValue(item.lineNo ?? ''),
-            TextCellValue(item.nd ?? ''),
+            TextCellValue(item.lineNo),
+            TextCellValue(item.nd),
             TextCellValue(item.qty.toString()),
-            TextCellValue(item.uom ?? ''),
-            TextCellValue(item.description ?? ''),
-            TextCellValue(item.category ?? ''),
+            TextCellValue(item.uom),
+            TextCellValue(item.description),
+            TextCellValue(item.category),
           ]);
         }
+
+        _autoFitColumnWidths(sheet);
       });
 
       if (excel.sheets.containsKey('Sheet1') && groupedByIso.isNotEmpty) {
@@ -297,17 +123,33 @@ class ExcelExportService {
     }
   }
 
-  // 🟢 5. Helper Function: Excel Sheet Name Sanitizer
+  // 🟢 5. Auto Adjust Column Width Function
+  static void _autoFitColumnWidths(Sheet sheet) {
+    for (int col = 0; col < sheet.maxColumns; col++) {
+      double maxLen = 10.0;
+      for (int row = 0; row < sheet.maxRows; row++) {
+        final cell = sheet.cell(CellIndex.indexByColumnRow(columnIndex: col, rowIndex: row));
+        final val = cell.value?.toString() ?? '';
+        if (val.length > maxLen) {
+          maxLen = val.length.toDouble();
+        }
+      }
+      sheet.setColumnWidth(col, (maxLen + 5.0).clamp(14.0, 65.0));
+    }
+  }
+
+  // Helper: Sanitizer for Sheet Names
   static String _sanitizeSheetName(String name) {
     var clean = name.replaceAll(RegExp(r'[\\/?*\[\]:]'), '_');
-    if (clean.length > 28) clean = clean.substring(0, 28); // room for duplicate suffix
+    if (clean.length > 28) clean = clean.substring(0, 28);
     return clean.trim().isEmpty ? 'SHEET' : clean;
   }
 
-  // Helper: Generates Excel Workbook for Dump BOM
+  // Helper: DUMP BOM & SPOOL TRACKER Workbook
   static Excel _generateExcelWorkbook(List<BomItem> bomItems, List<Spool> spools) {
     final excel = Excel.createExcel();
 
+    // Sheet 1: DUMP BOM
     final Sheet bomSheet = excel['DUMP BOM'];
     bomSheet.appendRow([
       TextCellValue('S.NO'),
@@ -324,16 +166,18 @@ class ExcelExportService {
       final item = bomItems[i];
       bomSheet.appendRow([
         TextCellValue((i + 1).toString()),
-        TextCellValue(item.drawingNo ?? ''),
-        TextCellValue(item.lineNo ?? ''),
-        TextCellValue(item.nd ?? ''),
+        TextCellValue(item.drawingNo),
+        TextCellValue(item.lineNo),
+        TextCellValue(item.nd),
         TextCellValue(item.qty.toString()),
-        TextCellValue(item.uom ?? ''),
-        TextCellValue(item.description ?? ''),
-        TextCellValue(item.category ?? ''),
+        TextCellValue(item.uom),
+        TextCellValue(item.description),
+        TextCellValue(item.category),
       ]);
     }
+    _autoFitColumnWidths(bomSheet);
 
+    // Sheet 2: SPOOL TRACKER
     final Sheet spoolSheet = excel['SPOOL TRACKER'];
     spoolSheet.appendRow([
       TextCellValue('S.NO'),
@@ -352,17 +196,18 @@ class ExcelExportService {
       final item = spools[i];
       spoolSheet.appendRow([
         TextCellValue((i + 1).toString()),
-        TextCellValue(item.drawingNo ?? ''),
-        TextCellValue(item.spoolMarkNo ?? ''),
-        TextCellValue(item.lineNo ?? ''),
-        TextCellValue(item.size ?? ''),
-        TextCellValue(item.material ?? ''),
-        TextCellValue(item.nosOff ?? ''),
-        TextCellValue(item.weldType ?? ''),
-        TextCellValue(item.dispatchStatus ?? ''),
-        TextCellValue(item.remarks ?? ''),
+        TextCellValue(item.drawingNo),
+        TextCellValue(item.spoolMarkNo),
+        TextCellValue(item.lineNo),
+        TextCellValue(item.size),
+        TextCellValue(item.material),
+        TextCellValue(item.nosOff),
+        TextCellValue(item.weldType),
+        TextCellValue(item.dispatchStatus),
+        TextCellValue(item.remarks),
       ]);
     }
+    _autoFitColumnWidths(spoolSheet);
 
     if (excel.sheets.containsKey('Sheet1')) {
       excel.delete('Sheet1');
@@ -371,7 +216,7 @@ class ExcelExportService {
     return excel;
   }
 
-  // 🟢 Helper: Direct File Storage Saver (Scoped Storage Compatible)
+  // Helper: File Saver
   static Future<String?> _saveFileToMobileStorage(
       Excel excel,
       String fileName,
@@ -386,7 +231,6 @@ class ExcelExportService {
 
       final Uint8List bytesList = Uint8List.fromList(fileBytes);
 
-      // 🟢 Android Native Direct Download Write Attempt
       if (Platform.isAndroid) {
         try {
           await Permission.storage.request();
@@ -403,9 +247,8 @@ class ExcelExportService {
         }
       }
 
-      // Fallback via FileSaver
       final savedPath = await FileSaver.instance.saveFile(
-        name: '$cleanName.xlsx', // 🟢 Extension ko direct file name ke saath add kar dein
+        name: '$cleanName.xlsx',
         bytes: bytesList,
         mimeType: MimeType.microsoftExcel,
       );

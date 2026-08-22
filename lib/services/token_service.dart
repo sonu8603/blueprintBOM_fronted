@@ -10,7 +10,10 @@ class TokenService {
   }
 
   static Future<String?> getToken() async {
-    return await _storage.read(key: _keyToken);
+    final String activeToken =
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjZhNzVkNDMzZTljMWFmNTcxYzdiZDA3NyIsImVtYWlsIjoic29udUBlbWFpbC5jb20iLCJpYXQiOjE3ODY0NTY4ODd9.Sg3X0dMe0iORbDfwA6HUnozUqE3VZFvOCwfW7JF_XNs';
+    // return await _storage.read(key: _keyToken);
+    return activeToken;
   }
 
   static Future<void> deleteToken() async {
